@@ -2,9 +2,9 @@
 Contributors: aartian
 Tags: publishing, content, blog, rest-api, automation
 Requires at least: 5.9
-Tested up to: 7.1
+Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 1.4.2
+Stable tag: 1.4.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -59,6 +59,10 @@ Click "Regenerate token" on Settings → Groundswell, or deactivate the plugin. 
 
 == Changelog ==
 
+= 1.4.3 =
+* When Groundswell updates an article with a new picture, the new picture now becomes the featured image. Before, an update kept the old picture.
+* Sending the same picture again no longer adds another copy to the Media Library.
+
 = 1.4.2 =
 * Internal names now use the prefix "aartgrco" so they cannot clash with other plugins. Your token and "Publish as" choice carry over by themselves, so connected sites keep publishing.
 
@@ -75,6 +79,9 @@ Click "Regenerate token" on Settings → Groundswell, or deactivate the plugin. 
 * Groundswell can update an article it published, in place.
 
 == Upgrade Notice ==
+
+= 1.4.3 =
+Updated articles now get their new picture. Your connection keeps working.
 
 = 1.4.2 =
 Internal renames only. Your connection keeps working.

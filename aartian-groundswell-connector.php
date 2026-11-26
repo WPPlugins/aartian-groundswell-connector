@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Aartian Groundswell Connector
  * Description: Lets Groundswell publish articles to this site via a token-authenticated REST endpoint. Uses a custom header (and query fallback), so it works even on hosts that strip the standard Authorization header.
- * Version: 1.4.2
+ * Version: 1.4.3
  * Author: Aartian Technologies
  * Author URI: https://aartian.com
  * Requires at least: 5.9
@@ -15,9 +15,12 @@
 if (!defined('ABSPATH')) exit;
 
 define('AARTGRCO_OPT_TOKEN', 'aartgrco_token');
-define('AARTGRCO_VERSION', '1.4.2');
+define('AARTGRCO_VERSION', '1.4.3');
 define('AARTGRCO_OPT_AUTHOR', 'aartgrco_author');
 define('AARTGRCO_OPT_AUTHOR_REPAIRED', 'aartgrco_author_repaired');
+// 1.4.3: on each picture this plugin downloads, the address it came from, so the same picture
+// sent again is recognised and not downloaded a second time.
+define('AARTGRCO_META_SOURCE', 'aartgrco_source_url');
 
 /** 1.4.2 renamed this plugin's options for WordPress.org (prefix "aartgrco"). A site updated
  *  from 1.4.1 or older keeps its token and "Publish as" choice: each old value is copied to
@@ -203,23 +206,44 @@ function aartgrco_update(WP_REST_Request $req) {
     if (isset($p['excerpt']))          $postarr['post_excerpt'] = sanitize_text_field($p['excerpt']);
     $res = wp_update_post($postarr, true);
     if (is_wp_error($res)) return new WP_Error('aartgrco_fail', $res->get_error_message(), array('status' => 500));
+    // 1.4.3: a picture sent with the update becomes the featured image, as on /publish. Up to
+    // 1.4.2 this route ignored it and still answered ok, so a changed picture never reached the
+    // page. No picture sent means the post keeps the one it has: an update without `images`
+    // is a text change, never a request to remove the picture.
+    if (!empty($p['images']['featured']['url'])) {
+        list($picture, $picture_reason) = aartgrco_set_featured($id, $p);
+    } else {
+        $picture = 'kept';
+        $picture_reason = 'no picture was sent with this update, so the post keeps the one it has';
+    }
     return array('ok' => true, 'action' => 'updated', 'id' => $id, 'url' => get_permalink($id),
-                 'status' => get_post_status($id), 'slug' => $existing->post_name);
+                 'status' => get_post_status($id), 'slug' => $existing->post_name,
+                 'picture' => $picture, 'picture_reason' => $picture_reason,
+                 'plugin_version' => AARTGRCO_VERSION);
 }
 
 /** GS-773: sideload `images.featured.url` and set it as the post's featured image.
- *  Returns array(picture, reason): ('set', null) or ('not_set', why). Never throws. */
+ *  Returns array(picture, reason): ('set', null) or ('not_set', why). Never throws.
+ *  1.4.3: when the post's featured image already came from this exact address it is kept, not
+ *  downloaded again, so re-sending an article does not fill the Media Library with copies. A
+ *  different address replaces the featured image; the old picture stays in the Media Library. */
 function aartgrco_set_featured($post_id, $p) {
     $url = isset($p['images']['featured']['url']) ? esc_url_raw($p['images']['featured']['url']) : '';
     if (!$url) return array('not_set', 'no picture was sent with this article');
+    $alt = isset($p['images']['featured']['alt']) ? sanitize_text_field($p['images']['featured']['alt']) : null;
+    $current = (int) get_post_thumbnail_id($post_id);
+    if ($current && get_post_meta($current, AARTGRCO_META_SOURCE, true) === $url) {
+        if ($alt) update_post_meta($current, '_wp_attachment_image_alt', $alt);
+        return array('set', null);
+    }
     if (!function_exists('media_sideload_image')) {
         require_once ABSPATH . 'wp-admin/includes/media.php';
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/image.php';
     }
-    $alt = isset($p['images']['featured']['alt']) ? sanitize_text_field($p['images']['featured']['alt']) : null;
     $att = media_sideload_image($url, $post_id, $alt, 'id');
     if (is_wp_error($att)) return array('not_set', 'the picture could not be downloaded: ' . $att->get_error_message());
+    update_post_meta($att, AARTGRCO_META_SOURCE, $url);
     if ($alt) update_post_meta($att, '_wp_attachment_image_alt', $alt);
     if (!set_post_thumbnail($post_id, $att)) return array('not_set', 'WordPress would not set the featured image');
     return array('set', null);
